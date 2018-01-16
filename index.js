@@ -32,7 +32,7 @@ function get_file_list_in_path_rec(path, config){
 		if(isdir) { return get_file_list_in_path_rec(file_path, config) }
 		else { return file_path }
 	    }).then(file_tree=>Array.prototype.concat(...file_tree))
-	})
+	}))
     })
 }
 
@@ -61,10 +61,58 @@ function write_file(dst_path, data){
 	})
     })
 }
-// TODO
-function parse_file(content){ return [] }
-// TODO
-function trans_block(block, db){ return block }
+
+function parse_file(content){
+    let pos = 0
+    let comment_level = 0
+    let block_start = 0
+    let in_string = false
+    let in_comment = false
+    let ret = []
+    while(pos < content.length){
+	let c = content[pos]
+	if(in_string){
+	    if(c=='"'){
+		if(content[pos+1]!='"'){
+		    in_string = false
+		} else {
+		    pos = pos + 1 // skip escape
+		}
+	    }
+	} else {
+	    if(c=='"'){
+		in_string = true
+	    } else if(c=='(' && content[pos+1]=='*'){
+		if(comment_level==0){
+		    ret.push(content.substring(block_start, pos))
+		    block_start = pos
+		}
+		pos = pos + 1
+		comment_level = comment_level + 1
+	    } else if(c=='*' && content[pos+1]==')'){
+		comment_level = comment_level - 1
+		pos = pos + 1
+		if(comment_level==0){
+		    ret.push(content.substring(block_start, pos+1))
+		    block_start = pos+1
+		}
+	    }
+	}
+	pos = pos + 1
+    }
+    return ret
+}
+
+function trans_block(origin, db){
+    if(origin.startswith('(*')){
+	return db.collection('trans').find({origin}).sort({vote: -1}).limit(1).toArray().then(trans_arr=>{
+	    let trans = trans_arr[0] || {vote: 0, text: origin}
+	    return trans.vote>0 ? trans.text : origin
+	})
+    } else {
+	return origin
+    }
+}
 
 function trans_file(file_path, src_path, dst_path, db){
     let srcf = path.join(src_path, file_path)
@@ -86,13 +134,83 @@ function make_html(dst_path){
 function connect_db(db_config){
     return mongodb.connect(db_config.mongourl)
 }
-// TODO
-function reinit_db(db, src_path, db_config, config){
+
+function reinit_db_remove_book_chapter_block(db){
+    return db.collection('block').remove({})
+	.then(a=>db.collection('chapter').remove({}))
+	.then(a=>db.collection('book').remove({}))
+}
+
+function reinit_db_insert_block(db, chapter_id, origin){
+    let block = {chapter_id, origin, status: 'unverified', trans_list: []}
+    return db.collection('block').insertOne(block).then(a=>{
+	return db.collection('chapter').updateOne(
+	    {_id: chapter_id},
+	    {$addToSet: {block_list: block._id}}
+	)
+    })
+}
+
+function reinit_db_insert_chapter(db, book_id, chapter_file_path){
+    let name = chapter_file_path.split('/').pop()
+    let chapter = {book_id, name, block_list: []}
+
+    return db.collection('chapter').insertOne(chapter).then(a=>{
+	return db.collection('book').updateOne(
+	    {_id: book_id},
+	    {$addToSet: {chapter_list: chapter._id}}
+	)
+    }).then(a=>{
+	return read_file(chapter_file_path).then(parse_file)
+    }).then(origin_list=>Promise.all(
+	origin_list.map(origin=>reinit_db_insert_block(db, chapter._id, origin))
+    ))
+}
+
+function reinit_db_insert_book(db, book_path, config){
+    while(book_path.endswith('/')) { book_path = book_path.substr(0, book_path.length-1) }
+    let name = book_path.split('/').pop()
+    let book = {name, chapter_list: []}
+    return get_file_list(book_path, config).then(file_list=>{
+	return db.collection('book').insertOne(book)
+    }).then(a=>Promise.all(
+	file_list.map(file_path=>reinit_db_insert_chapter(db, book._id, file_path))
+    ))
+}
+
+function reinit_db_insert_book_list(db, src_path, config){
+    let book_path_list = config.book_path_list
+    return Promise.all(
+	book_path_list.map(book_path, reinit_db_insert_book(db, path.join(src_path, book_path), config))
+    )
+}
+
+function reinit_db_fix_trans_block_block(db, block, trans){
+    return db.collection('block').updateOne(
+	{id: block._id},
+	{$addToSet: {trans_list: trans._id}}
+    )
+}
+
+function reinit_db_fix_trans_block_id(db){
+    return db.collection('trans').find().toArray().then(trans_list=>Promise.all(
+	trans_list.map(trans=>{
+	    return db.collection('block').findOne({origin: trans.origin}).then(block=>{
+		return reinit_db_fix_trans_block_block(db, block, trans)
+	    })
+	})
+    )).then(a=>'ok')
+}
+
+function reinit_db(db, src_path, config){
+    return reinit_db_insert_book_list(db, src_path, config).then(a=>{
+	return reinit_db_fix_trans_block_id(db)
+    })
 }
 
 function init(src_path, db_config, config){
     return connct_db(db_config).then(db=>{
-	return reinit_db(db, src_path, db_config, config)
+	return reinit_db(db, src_path, config)
     })
 }
 
@@ -102,4 +220,25 @@ function main(src_path, dst_path, db_config, config){
 	    return Promise.all(file_list.map(file_path=>trans_file(file_path, src_path, dst_path, db)))
 	})
     }).then(a=>make_html(dst_path)).catch(console.log)
+}
+
+function try_read(filename){
+    try{
+	let content = fs.readFileSync(filename, {encoding: 'utf8'})
+	return JSON.parse(content)
+    }catch(err){
+	return {}
+    }
+}
+
+function load_config(){
+    return Object.assign({
+	book_path_list: []
+    }, try_read(path.join(__dirname, './deployment_config/config.json')))
+}
+
+function load_db_config(){
+    return Object.assign({
+	mongourl: 'mongodb://localhost/test'
+    }, try_read(path.join(__dirname, './deployment_config/mongodb.json')))
 }

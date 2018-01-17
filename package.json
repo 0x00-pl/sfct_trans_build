@@ -15,5 +15,9 @@
   "bugs": {
     "url": "https://github.com/0x00-pl/sfct_trans_build/issues"
   },
-  "homepage": "https://github.com/0x00-pl/sfct_trans_build#readme"
+  "homepage": "https://github.com/0x00-pl/sfct_trans_build#readme",
+  "dependencies": {
+    "es6-promise": "^4.2.2",
+    "mongodb": "^3.0.1"
+  }
 }

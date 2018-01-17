@@ -1,5 +1,5 @@
 let fs = require('fs')
-let path = reqiure('path')
+let path = require('path')
 let mongodb = require('mongodb')
 let { Promise } = require('es6-promise')
 let child_process = require('child_process')

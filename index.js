@@ -49,7 +49,7 @@ function get_file_list(src_path, config){
 
 function read_file(src_path){
     return new Promise((resolve, reject)=>{
-	fs.readFile(src_path, (err, data)=>{
+	fs.readFile(src_path, {encoding: 'utf8'}, (err, data)=>{
 	    if(err){ reject(err) }
 	    else { resolve(data) }
 	})
@@ -119,7 +119,9 @@ function trans_block(origin, db){
 function trans_file(file_path, src_path, dst_path, db){
     let srcf = path.join(src_path, file_path)
     let dstf = path.join(dst_path, file_path)
-    return read_file(srcf).then(content=>parse_file(content)).then(block_list=>{
+    return read_file(srcf).then(content=>{
+	return parse_file(content)
+    }).then(block_list=>{
 	return Promise.all(block_list.map(block=>trans_block(block, db)))
     }).then(transed_block_list=>write_file(dstf, transed_block_list.join('')))
 }
@@ -142,10 +144,10 @@ function connect_db(config){
 		if(db.collection){
 		    resolve(db)
 		} else {
-		    db.db('test', (err, db)=>{
-			if(err) { reject(err) }
-			else { resolve(db) }
-		    })
+		    let client = db
+		    let real_db = client.db('test')
+		    real_db.close = client.close.bind(client)
+		    resolve(real_db)
 		}
 	    }
 	})
@@ -160,6 +162,7 @@ function reinit_db_remove_book_chapter_block(db){
 
 function reinit_db_insert_block(db, chapter_id, origin){
     let block = {chapter_id, origin, status: 'unverified', trans_list: []}
+
     return db.collection('block').insertOne(block).then(a=>{
 	return db.collection('chapter').updateOne(
 	    {_id: chapter_id},
@@ -172,27 +175,31 @@ function reinit_db_insert_chapter(db, book_id, chapter_file_path){
     let name = chapter_file_path.split('/').pop()
     let chapter = {book_id, name, block_list: []}
 
+    console.log('insert chapter: ', name)
     return db.collection('chapter').insertOne(chapter).then(a=>{
 	return db.collection('book').updateOne(
 	    {_id: book_id},
 	    {$addToSet: {chapter_list: chapter._id}}
 	)
     }).then(a=>{
-	return read_file(chapter_file_path).then(parse_file)
+	return read_file(chapter_file_path).then(content=>{
+	    return parse_file(content)
+	})
     }).then(origin_list=>Promise.all(
 	origin_list.map(origin=>reinit_db_insert_block(db, chapter._id, origin))
-    ))
+    )).then(a=>console.log('insert chapter done. ', name))
 }
 
 function reinit_db_insert_book(db, book_path, config){
     while(book_path.endsWith('/')) { book_path = book_path.substr(0, book_path.length-1) }
     let name = book_path.split('/').pop()
     let book = {name, chapter_list: []}
+    console.log('insert book: ', name)
     return get_file_list(book_path, config).then(file_list=>{
-	return db.collection('book').insertOne(book)
-    }).then(a=>Promise.all(
-	file_list.map(file_path=>reinit_db_insert_chapter(db, book._id, file_path))
-    ))
+	return db.collection('book').insertOne(book).then(a=>Promise.all(
+	    file_list.map(file_path=>reinit_db_insert_chapter(db, book._id, path.join(book_path, file_path)))
+	))
+    }).then(a=>console.log('insert book done. ', name))
 }
 
 function reinit_db_insert_book_list(db, src_path, config){
@@ -210,13 +217,23 @@ function reinit_db_fix_trans_block_block(db, block, trans){
 }
 
 function reinit_db_fix_trans_block_id(db){
-    return db.collection('trans').find().toArray().then(trans_list=>Promise.all(
-	trans_list.map(trans=>{
+    console.log('fixing trans.block_id.')
+    let debug_count = 0
+    let debug_total = 0
+    return db.collection('trans').find().toArray().then(trans_list=>{
+	debug_total = trans_list.length
+	console.log('get trans_list done. length: ', trans_list.length)
+	return Promise.all(trans_list.map(trans=>{
 	    return db.collection('block').findOne({origin: trans.origin}).then(block=>{
 		return reinit_db_fix_trans_block_block(db, block, trans)
+	    }).then(a=>{
+		debug_count++
+		if(debug_count % 100 == 0){
+		    console.log(`fixed count: ${debug_count} / ${debug_total}`})
+		}
 	    })
-	})
-    )).then(a=>'ok')
+	}))
+    }).then(a=>console.log('fixing trand.block_id done.'))
 }
 
 function reinit_db(db, src_path, config){
@@ -227,14 +244,14 @@ function reinit_db(db, src_path, config){
 
 function init(src_path, config){
     return connect_db(config).then(db=>{
-	return reinit_db(db, src_path, config)
+	return reinit_db(db, src_path, config).then(a=>db.close())
     })
 }
 
 function trans(src_path, dst_path, config){
     return get_file_list(src_path, config).then(file_list=>{
 	return connect_db(config).then(db=>{
-	    return Promise.all(file_list.map(file_path=>trans_file(file_path, src_path, dst_path, db)))
+	    return Promise.all(file_list.map(file_path=>trans_file(file_path, src_path, dst_path, db))).then(a=>db.close())
 	})
     }).then(a=>make_html(dst_path)).catch(console.log)
 }
@@ -277,5 +294,5 @@ if(process.argv[2] == "trans"){
     main()
 } else if(process.argv[2] == "init"){
     let config = load_config()
-    init(config.src_path, config).catch(console.log)
+    init(config.src_path, config).then(a=>console.log('all done.')).catch(console.log)
 }

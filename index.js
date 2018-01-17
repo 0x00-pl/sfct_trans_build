@@ -131,8 +131,8 @@ function make_html(dst_path){
     })
 }
 
-function connect_db(db_config){
-    return mongodb.connect(db_config.mongourl)
+function connect_db(config){
+    return mongodb.connect(config.mongourl)
 }
 
 function reinit_db_remove_book_chapter_block(db){
@@ -208,15 +208,15 @@ function reinit_db(db, src_path, config){
     })
 }
 
-function init(src_path, db_config, config){
-    return connct_db(db_config).then(db=>{
+function init(src_path, config){
+    return connct_db(config).then(db=>{
 	return reinit_db(db, src_path, config)
     })
 }
 
-function main(src_path, dst_path, db_config, config){
+function trans(src_path, dst_path, config){
     return get_file_list(src_path, config).then(file_list=>{
-	return connect_db(db_config).then(db=>{
+	return connect_db(config).then(db=>{
 	    return Promise.all(file_list.map(file_path=>trans_file(file_path, src_path, dst_path, db)))
 	})
     }).then(a=>make_html(dst_path)).catch(console.log)
@@ -232,13 +232,26 @@ function try_read(filename){
 }
 
 function load_config(){
-    return Object.assign({
-	book_path_list: []
-    }, try_read(path.join(__dirname, './deployment_config/config.json')))
+    return Object.assign(
+	{
+	    mongourl: 'mongodb://localhost/test',
+	    src_path: path.join(__dirname, './sf_src'),
+	    dst_path: path.join(__dirname, './sf_dst'),
+	    book_path_list: [
+		'./new/sf'
+	    ]
+	},
+	try_read(path.join(__dirname, './deployment_config/config.json')),
+	try_read(path.join(__dirname, './deployment_config/mongodb.json'))
+    )
 }
 
-function load_db_config(){
-    return Object.assign({
-	mongourl: 'mongodb://localhost/test'
-    }, try_read(path.join(__dirname, './deployment_config/mongodb.json')))
+function main(){
+    let config = load_config()
+    return Promise.resolve(trans(config.src_path, config.dst_path, config))
+}
+
+module.exports = {
+    init,
+    main
 }

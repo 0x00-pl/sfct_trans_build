@@ -39,7 +39,7 @@ function get_file_list_in_path_rec(path, config){
 function get_file_list(src_path, config){
     "return .v file relative path base on src_path and dst_path."
     return get_file_list_in_path_rec(src_path, config).then(file_list=>{
-	return file_list.filter(file_path=>file_path.endswith('.v'))
+	return file_list.filter(file_path=>file_path.endsWith('.v'))
     }).then(file_list=>{
 	return file_list.map(file_path=>path.relative(src_path, file_path))
     })
@@ -168,7 +168,7 @@ function reinit_db_insert_chapter(db, book_id, chapter_file_path){
 }
 
 function reinit_db_insert_book(db, book_path, config){
-    while(book_path.endswith('/')) { book_path = book_path.substr(0, book_path.length-1) }
+    while(book_path.endsWith('/')) { book_path = book_path.substr(0, book_path.length-1) }
     let name = book_path.split('/').pop()
     let book = {name, chapter_list: []}
     return get_file_list(book_path, config).then(file_list=>{
@@ -181,7 +181,7 @@ function reinit_db_insert_book(db, book_path, config){
 function reinit_db_insert_book_list(db, src_path, config){
     let book_path_list = config.book_path_list
     return Promise.all(
-	book_path_list.map(book_path, reinit_db_insert_book(db, path.join(src_path, book_path), config))
+	book_path_list.map(book_path=>reinit_db_insert_book(db, path.join(src_path, book_path), config))
     )
 }
 
@@ -209,7 +209,7 @@ function reinit_db(db, src_path, config){
 }
 
 function init(src_path, config){
-    return connct_db(config).then(db=>{
+    return connect_db(config).then(db=>{
 	return reinit_db(db, src_path, config)
     })
 }

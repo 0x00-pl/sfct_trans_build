@@ -255,3 +255,10 @@ module.exports = {
     init,
     main
 }
+
+if(process.argv[2] == "trans"){
+    main()
+} else if(process.argv[2] == "init"){
+    let config = load_config()
+    init(config.src_path, config)
+}

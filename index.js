@@ -15,24 +15,26 @@ function get_file_list_in_path(path, config){
     })
 }
 
-function get_file_list_is_dir(path){
+function get_file_list_is_dir(base_path){
     return new Promise((resolve, reject)=>{
-	fs.stat(path, (err, stat)=>{
+	fs.stat(base_path, (err, stat)=>{
 	    if(err) { reject(err) }
 	    else { resolve(stat.isDirectory()) }
 	})
     })
 }
 
-function get_file_list_in_path_rec(path, config){
-    return get_file_list_in_path(path, config).then(file_list=>{
+function get_file_list_in_path_rec(base_path, config){
+    return get_file_list_in_path(base_path, config).then(file_list=>{
 	return Promise.all(file_list.map(file_name=>{
-	    let file_path = path.join(path, file_name)
+	    let file_path = path.join(base_path, file_name)
 	    return get_file_list_is_dir(file_path).then(isdir=>{
 		if(isdir) { return get_file_list_in_path_rec(file_path, config) }
 		else { return file_path }
-	    }).then(file_tree=>Array.prototype.concat(...file_tree))
-	}))
+	    })
+	})).then(file_tree=>{
+	    return Array.prototype.concat(...file_tree)
+	})
     })
 }
 
@@ -132,7 +134,22 @@ function make_html(dst_path){
 }
 
 function connect_db(config){
-    return mongodb.connect(config.mongourl)
+    return new Promise((resolve, reject)=>{
+	let pdb = mongodb.MongoClient.connect(config.mongourl, (err, db)=>{
+	    if(err) {
+		reject(err)
+	    } else {
+		if(db.collection){
+		    resolve(db)
+		} else {
+		    db.db('test', (err, db)=>{
+			if(err) { reject(err) }
+			else { resolve(db) }
+		    })
+		}
+	    }
+	})
+    })
 }
 
 function reinit_db_remove_book_chapter_block(db){
@@ -260,5 +277,5 @@ if(process.argv[2] == "trans"){
     main()
 } else if(process.argv[2] == "init"){
     let config = load_config()
-    init(config.src_path, config)
+    init(config.src_path, config).catch(console.log)
 }

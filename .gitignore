@@ -1,3 +1,5 @@
 /node_modules
 /deployment_config
+/sf_src
+/sf_dst
 *~

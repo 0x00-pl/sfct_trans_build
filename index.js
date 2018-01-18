@@ -38,12 +38,12 @@ function get_file_list_in_path_rec(base_path, config){
     })
 }
 
-function get_file_list(src_path, config){
-    "return .v file relative path base on src_path and dst_path."
-    return get_file_list_in_path_rec(src_path, config).then(file_list=>{
+function get_file_list(base_path, config){
+    "return .v file relative path base on base_path."
+    return get_file_list_in_path_rec(base_path, config).then(file_list=>{
 	return file_list.filter(file_path=>file_path.endsWith('.v'))
     }).then(file_list=>{
-	return file_list.map(file_path=>path.relative(src_path, file_path))
+	return file_list.map(file_path=>path.relative(base_path, file_path))
     })
 }
 
@@ -102,6 +102,7 @@ function parse_file(content){
 	}
 	pos = pos + 1
     }
+    if(block_start != pos) { ret.push(content.substring(block_start)) }
     return ret
 }
 
@@ -129,11 +130,18 @@ function trans_file(file_path, src_path, dst_path, db){
 
 function make_html(dst_path){
     return new Promise((resolve, reject)=>{
-	child_process.exec('make', {cwd: dst_path}, (err, stdout, stderr)=>{
+	child_process.exec('make clean', {cwd: dst_path}, (err, stdout, stderr)=>{
 	    if(err) {
-		console.log('make fail: \n', err)
 		reject(err)
 	    } else { resolve([stdout, stderr]) }
+	})
+    }).then(a=>{
+	return new Promise((resolve, reject)=>{
+	    child_process.exec('make', {cwd: dst_path}, (err, stdout, stderr)=>{
+		if(err) {
+		    reject(err)
+		} else { resolve([stdout, stderr]) }
+	    })
 	})
     })
 }
@@ -251,12 +259,28 @@ function init(src_path, config){
     })
 }
 
+function trans_path(db, src_path, dst_path, trans_path, config){
+    let src_trans_path = path.join(src_path, trans_path)
+    let dst_trans_path = path.join(dst_path, trans_path)
+    return get_file_list(src_trans_path, config).then(file_list=>{
+	console.log('start trans: ', trans_path)
+	return Promise.all(file_list.map(file_path=>{
+	    return trans_file(file_path, src_trans_path, dst_trans_path, db)
+	}))
+    }).then(a=>{
+	return console.log('trans done. start make. ', trans_path)
+    }).then(a=>make_html(dst_trans_path)).then(a=>{
+	return console.log('make done. ', trans_path)
+    })
+}
+
 function trans(src_path, dst_path, config){
-    return get_file_list(src_path, config).then(file_list=>{
-	return connect_db(config).then(db=>{
-	    return Promise.all(file_list.map(file_path=>trans_file(file_path, src_path, dst_path, db))).then(a=>db.close())
-	})
-    }).then(a=>make_html(dst_path)).catch(console.log)
+    return connect_db(config).then(db=>{
+	let trans_path_list = config.trans_path_list || [src_path]
+	return Promise.all(trans_path_list.map(path_to_trans=>{
+	    return trans_path(db, src_path, dst_path, path_to_trans, config)
+	})).then(a=>db.close())
+    }).then(a=>console.log('all done.')).catch(console.log)
 }
 
 function try_read(filename){
@@ -276,6 +300,9 @@ function load_config(){
 	    dst_path: path.join(__dirname, './sf_dst'),
 	    book_path_list: [
 		'./new/sf'
+	    ],
+	    trans_path_list: [
+		'./new'
 	    ]
 	},
 	try_read(path.join(__dirname, './deployment_config/config.json')),

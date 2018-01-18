@@ -229,7 +229,7 @@ function reinit_db_fix_trans_block_id(db){
 	    }).then(a=>{
 		debug_count++
 		if(debug_count % 100 == 0){
-		    console.log(`fixed count: ${debug_count} / ${debug_total}`})
+		    console.log(`fixed count: ${debug_count} / ${debug_total}`)
 		}
 	    })
 	}))

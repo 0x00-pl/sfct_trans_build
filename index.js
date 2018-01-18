@@ -248,7 +248,9 @@ function reinit_db_fix_trans_block_id(db){
 }
 
 function reinit_db(db, src_path, config){
-    return reinit_db_insert_book_list(db, src_path, config).then(a=>{
+    return reinit_db_remove_book_chapter_block(db).then(a=>{
+	return reinit_db_insert_book_list(db, src_path, config)
+    }).then(a=>{
 	return reinit_db_fix_trans_block_id(db)
     })
 }

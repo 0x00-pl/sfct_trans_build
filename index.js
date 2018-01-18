@@ -220,9 +220,9 @@ function reinit_db_insert_book_list(db, src_path, config){
     )
 }
 
-function reinit_db_fix_trans_block_block(db, block, trans){
-    return db.collection('block').updateOne(
-	{id: block._id},
+function reinit_db_fix_trans_block_block(db, trans){
+    return db.collection('block').updateMany(
+	{origin: trans.origin},
 	{$addToSet: {trans_list: trans._id}}
     )
 }
@@ -235,9 +235,7 @@ function reinit_db_fix_trans_block_id(db){
 	debug_total = trans_list.length
 	console.log('get trans_list done. length: ', trans_list.length)
 	return Promise.all(trans_list.map(trans=>{
-	    return db.collection('block').findOne({origin: trans.origin}).then(block=>{
-		return reinit_db_fix_trans_block_block(db, block, trans)
-	    }).then(a=>{
+	    return reinit_db_fix_trans_block_block(db, trans).then(a=>{
 		debug_count++
 		if(debug_count % 100 == 0){
 		    console.log(`fixed count: ${debug_count} / ${debug_total}`)

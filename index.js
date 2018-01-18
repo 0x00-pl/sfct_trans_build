@@ -57,7 +57,7 @@ function read_file(src_path){
 }
 function write_file(dst_path, data){
     return new Promise((resolve, reject)=>{
-	fs.writeFIle(dst_path, data, (err)=>{
+	fs.writeFile(dst_path, data, (err)=>{
 	    if(err) { reject(err) }
 	    else { resolve(dst_path) }
 	})
@@ -106,7 +106,7 @@ function parse_file(content){
 }
 
 function trans_block(origin, db){
-    if(origin.startswith('(*')){
+    if(origin.startsWith('(*')){
 	return db.collection('trans').find({origin}).sort({vote: -1}).limit(1).toArray().then(trans_arr=>{
 	    let trans = trans_arr[0] || {vote: 0, text: origin}
 	    return trans.vote>0 ? trans.text : origin
@@ -119,18 +119,21 @@ function trans_block(origin, db){
 function trans_file(file_path, src_path, dst_path, db){
     let srcf = path.join(src_path, file_path)
     let dstf = path.join(dst_path, file_path)
+    console.log('trans file: ', file_path)
     return read_file(srcf).then(content=>{
 	return parse_file(content)
     }).then(block_list=>{
 	return Promise.all(block_list.map(block=>trans_block(block, db)))
-    }).then(transed_block_list=>write_file(dstf, transed_block_list.join('')))
+    }).then(transed_block_list=>write_file(dstf, transed_block_list.join(''))).then(a=>console.log('trans file done. ', file_path))
 }
 
 function make_html(dst_path){
     return new Promise((resolve, reject)=>{
 	child_process.exec('make', {cwd: dst_path}, (err, stdout, stderr)=>{
-	    if(err) { reject(err) }
-	    else { resolve([stdout, stderr]) }
+	    if(err) {
+		console.log('make fail: \n', err)
+		reject(err)
+	    } else { resolve([stdout, stderr]) }
 	})
     })
 }

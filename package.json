@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "init": "node . init",
-    "trans": "node . trans"
+    "init": "time node . init",
+    "trans": "time node . trans"
   },
   "repository": {
     "type": "git",

@@ -196,9 +196,11 @@ function reinit_db_insert_chapter(db, book_id, chapter_file_path){
 	return read_file(chapter_file_path).then(content=>{
 	    return parse_file(content)
 	})
-    }).then(origin_list=>Promise.all(
-	origin_list.map(origin=>reinit_db_insert_block(db, chapter._id, origin))
-    )).then(a=>console.log('insert chapter done. ', name))
+    }).then(origin_list=>{
+	return origin_list
+	    .filter(origin=>origin.startsWith('(*'))
+	    .map(origin=>reinit_db_insert_block(db, chapter._id, origin))
+    }).then(Promise.all.bind(Promise)).then(a=>console.log('insert chapter done. ', name))
 }
 
 function reinit_db_insert_book(db, book_path, config){

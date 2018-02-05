@@ -172,7 +172,9 @@ function reinit_db_remove_book_chapter_block(db){
 }
 
 function reinit_db_insert_block(db, chapter_id, origin){
-    let block = {chapter_id, origin, status: 'unverified', trans_list: []}
+    let block = {chapter_id, origin, trans_list: []}
+
+    if(origin[0]!='('){ throw "Not a comment block" }
 
     return db.collection('block').insertOne(block).then(a=>{
 	return db.collection('chapter').updateOne(

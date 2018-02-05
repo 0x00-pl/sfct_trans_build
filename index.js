@@ -301,7 +301,9 @@ function load_config(){
 	    src_path: path.join(__dirname, './sf_src'),
 	    dst_path: path.join(__dirname, './sf_dst'),
 	    book_path_list: [
-		'./new/sf'
+		'./new/sf',
+		'./new/lf',
+		'./new/vfa',
 	    ],
 	    trans_path_list: [
 		'./new'
